@@ -2385,6 +2385,7 @@ main .project-map-embed {
   grid-row: 2;
   margin: 0;
   text-align: right;
+  color: var(--color-footer-muted);
 }
 
 .about-value-panel {

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 /** Trượt qua bản nối ở hai đầu, rồi đổi về vị trí thật khi hình ảnh đã khớp. */
 export function useLoopCarousel(count: number, duration: number) {
   const [state, setState] = useState({ position: 1, animate: false });
+  const [queuedIndex, setQueuedIndex] = useState<number | null>(null);
   const moving = useRef(false);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
   const position = count > 0 ? Math.min(state.position, count + 1) : 1;
@@ -13,9 +14,13 @@ export function useLoopCarousel(count: number, duration: number) {
   const settle = useCallback(() => {
     moving.current = false;
     setState((current) => {
-      if (current.position === 0) return { position: count, animate: false };
-      if (current.position >= count + 1) return { position: 1, animate: false };
-      return current;
+      const position =
+        current.position === 0
+          ? count
+          : current.position >= count + 1
+            ? 1
+            : current.position;
+      return { position, animate: false };
     });
   }, [count]);
 
@@ -26,8 +31,30 @@ export function useLoopCarousel(count: number, duration: number) {
     return () => window.clearTimeout(timer);
   }, [state, duration, settle]);
 
+  // Giữ thao tác mới nhất trong lúc trượt, rồi xử lý sau khi đã về slide thật.
+  // Một frame giữa hai lượt giúp việc nối vòng không trượt xuyên toàn bộ dãy.
+  useEffect(() => {
+    if (state.animate || queuedIndex === null) return;
+    const frame = window.requestAnimationFrame(() => {
+      setQueuedIndex(null);
+      if (count <= 1 || queuedIndex === activeIndex) return;
+      const reduce = window.matchMedia?.(
+        "(prefers-reduced-motion: reduce)",
+      ).matches;
+      moving.current = !reduce;
+      setState({ position: queuedIndex + 1, animate: !reduce });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [state.animate, queuedIndex, activeIndex, count]);
+
   function goTo(index: number) {
-    if (count <= 1 || moving.current || index === activeIndex) return;
+    if (count <= 1) return;
+    if (moving.current) {
+      setQueuedIndex((index + count) % count);
+      return;
+    }
+    if (index === activeIndex) return;
+    setQueuedIndex(null);
     const reduce = window.matchMedia?.(
       "(prefers-reduced-motion: reduce)",
     ).matches;
